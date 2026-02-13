@@ -25,10 +25,10 @@ dispatch-claude-code.sh │
 
 | 文件 | 位置 | 作用 |
 |------|------|------|
-| hooks/notify-agi.sh | ~/.claude/hooks/ | Stop Hook 脚本 |
-| hooks/claude-settings.json | ~/.claude/settings.json | Claude Code 配置（注册 hook） |
-| scripts/dispatch-claude-code.sh | 任意位置 | 一键派发任务 |
-| scripts/claude_code_run.py | 任意位置 | Claude Code PTY 运行器 |
+| claude-code-hooks/notify-agi.sh | ~/.claude/hooks/ | Stop Hook 脚本 |
+| claude-code-hooks/dispatch.sh | ~/.openclaw/skills/claude-code-dispatch/ | 一键派发任务 |
+| scripts/claude_code_run.py | ~/.openclaw/skills/claude-code-dispatch/scripts/ | Claude Code PTY 运行器 |
+| claude-settings.json | ~/.claude/settings.json | Claude Code 配置（注册 hook） |
 
 ## 使用方法
 
@@ -112,7 +112,9 @@ Hook 在 Stop 和 SessionEnd 都会触发。脚本使用 `.hook-lock` 文件去�
 ## 文件路径
 
 - Hook 脚本: `~/.claude/hooks/notify-agi.sh`
-- 结果目录: `/home/dministrator/.openclaw/data/claude-code-results/`
+- dispatch 脚本: `~/.openclaw/skills/claude-code-dispatch/dispatch.sh`
+- Runner: `~/.openclaw/skills/claude-code-dispatch/scripts/claude_code_run.py`
+- 结果目录: `~/.openclaw/data/claude-code-results/`
 - OpenClaw Skill: `~/.openclaw/skills/claude-code-dispatch/`
 
 ## 参考
