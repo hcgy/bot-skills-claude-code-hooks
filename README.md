@@ -1,5 +1,22 @@
 # Claude Code Stop Hook — 任务完成自动回调
 
+> 基于 OpenClaw + Claude Code 的零轮询开发方案
+
+## 核心思想
+
+**派发后不管，完成自动通知**
+
+```
+用户 → OpenClaw → dispatch → Claude Code (后台) → Hook → 飞书通知 → 用户
+```
+
+**优势**：
+- OpenClaw 不需要轮询，不消耗额外 tokens
+- Claude Code 在后台独立运行
+- 任务完成后自动推送通知到飞书
+
+---
+
 当 Claude Code（含 Agent Teams）完成任务后，自动：
 - 将结果写入 JSON 文件
 - 发送飞书通知到指定用户
