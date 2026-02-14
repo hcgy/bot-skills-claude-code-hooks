@@ -42,12 +42,117 @@
 bot-skills-claude-code-hooks/
 ├── README.md                      # 项目说明
 ├── claude-settings.json           # Claude Code 配置示例
+├── dispatch.sh                    # 任务派发脚本（入口）
 ├── claude-code-hooks/
 │   ├── notify-agi.sh              # SessionEnd Hook 脚本
-│   └── dispatch.sh                # 任务派发脚本
+│   └── dispatch.sh                # 任务派发脚本（旧版）
 └── scripts/
-    └── claude_code_run.py          # Claude Code PTY 运行器
+    ├── claude_code_run.py          # Claude Code PTY 运行器
+    └── run-claude-code.sh          # 启动脚本
 ```
+
+> **说明**：派发脚本和 Hook 已合并到同一个仓库，方便统一管理和部署。
+
+---
+
+## 常见问题与解决方案
+
+### 1. Agent Teams 子进程代理问题
+
+#### 问题描述
+
+当启用 Agent Teams（`--agent-teams`）时，Claude Code 会启动子进程（sub-agent）来处理任务。但子进程默认**不会继承父进程的环境变量**，导致子进程无法访问代理，无法访问 Anthropic API。
+
+#### 症状
+
+```
+Error: Could not connect to API
+或者
+API request failed: connection refused
+```
+
+#### 解决方案
+
+在 `dispatch.sh` 中，代理环境变量会通过 `export` 设置，确保所有子进程都能继承：
+
+```bash
+# 设置代理（WSL2 环境）
+WSL_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
+export http_proxy="http://${WSL_IP}:4780"
+export https_proxy="http://${WSL_IP}:4780"
+
+# 关键：设置 no_proxy 排除本地和国内服务
+export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
+```
+
+> **注意**：`export` 确保代理对所有子进程可见，包括 Agent Teams 启动的子代理。
+
+---
+
+### 2. Git 全局代理配置
+
+#### 问题描述
+
+Claude Code 在执行任务时，可能会执行 `git push`、`git pull` 等操作。如果使用了代理，这些操作也需要代理支持。
+
+#### 解决方案
+
+`dispatch.sh` 在启动时会自动配置 git 全局代理：
+
+```bash
+# 自动设置 git 全局代理
+GIT_PROXY="http://${WSL_IP}:4780"
+git config --global http.proxy "$GIT_PROXY"
+git config --global https.proxy "$GIT_PROXY"
+
+# 对国内仓库不使用代理
+git config --global url."https://github.com/".insteadOf "git@github.com:"
+git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
+```
+
+> **注意**：此配置在每次派发任务时自动执行，确保 git 操作使用正确的代理。
+
+---
+
+### 3. 任务完成后自动 Git Push
+
+#### 功能说明
+
+Claude Code 完成任务后，可以自动将修改推送到远程仓库。需要满足以下条件：
+1. 任务元数据中包含 `auto_push: true`
+2. 工作目录是 git 仓库
+3. 有远程仓库配置
+
+#### 配置方式
+
+在派发任务时添加 `--auto-push` 参数：
+
+```bash
+/claude-code-dispatch -f "user:ou_xxx" -p "重构项目" -w "/path/to/repo" --auto-push
+```
+
+#### 实现原理
+
+1. 任务完成后，Hook（`notify-agi.sh`）读取元数据
+2. 如果 `auto_push` 为 `true`，执行自动推送
+3. 推送结果通过飞书通知用户
+
+```bash
+# notify-agi.sh 中的自动推送逻辑
+if [ "$AUTO_PUSH" = "true" ] && [ -d "$CWD/.git" ]; then
+    (
+        cd "$CWD"
+        git add -A
+        git commit -m "Auto commit by Claude Code: $TASK_NAME" 2>/dev/null || true
+        git push origin HEAD 2>&1
+    ) >> "$LOG" 2>&1 &
+fi
+```
+
+#### 推送失败处理
+
+- 如果没有需要提交的内容（nothing to commit），跳过推送
+- 如果推送失败，会在飞书通知中显示错误信息
 
 ---
 
@@ -167,6 +272,7 @@ Claude Code 有两个生命周期点：
 | --permission-mode | - | 权限模式（默认 bypassPermissions） | 可选 |
 | --agent-teams | - | 启用 Agent Teams | 可选 |
 | --name | -n | 任务名称 | 可选 |
+| --auto-push | - | 任务完成后自动 git push | 可选 |
 
 ### 示例
 
@@ -179,6 +285,9 @@ Claude Code 有两个生命周期点：
 
 # Agent Teams 模式（复杂任务）
 /claude-code-dispatch -f "user:ou_xxx" --agent-teams -p "重构整个前端项目"
+
+# 自动推送模式（完成后自动 git push）
+/claude-code-dispatch -f "user:ou_xxx" -p "重构项目" -w "/path/to/repo" --auto-push
 ```
 
 ---
@@ -275,10 +384,17 @@ tail -f ~/.openclaw/data/claude-code-results/hook.log
 
 ## 更新日志
 
+### 2026-02-15
+- 添加 Agent Teams 子进程代理配置
+- 添加 git 全局代理自动配置
+- 添加项目结构统一说明
+- 添加任务完成后自动 git push 功能
+
 ### 2026-02-14
 - 初始化项目
 - 只用 SessionEnd Hook
 - 飞书消息后台发送
 - 移除超时限制
 
+### 2026-02-15 (Test)
 - Test push at Sun Feb 15 06:48:04 CST 2026

@@ -15,6 +15,7 @@
 #   --permission-mode MODE   Claude Code permission mode
 #   --allowed-tools TOOLS    Allowed tools string
 #   --model MODEL            Model override
+#   --auto-push              Auto git push after task completion
 #
 # The script:
 #   1. Writes task metadata to task-meta.json (hook reads this)
@@ -44,6 +45,7 @@ TEAMMATE_MODE=""
 PERMISSION_MODE="bypassPermissions"
 ALLOWED_TOOLS=""
 MODEL=""
+AUTO_PUSH=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
@@ -59,6 +61,7 @@ while [[ $# -gt 0 ]]; do
         --permission-mode) PERMISSION_MODE="$2"; shift 2;;
         --allowed-tools) ALLOWED_TOOLS="$2"; shift 2;;
         --model) MODEL="$2"; shift 2;;
+        --auto-push) AUTO_PUSH="1"; shift;;
         *) echo "Unknown option: $1" >&2; exit 1;;
     esac
 done
@@ -89,13 +92,15 @@ jq -n \
     --arg workdir "$WORKDIR" \
     --arg ts "$(date -Iseconds)" \
     --arg agent_teams "${AGENT_TEAMS:-0}" \
-    '{task_name: $name, telegram_group: $group, feishu_target: $feishu, callback_session: $session, prompt: $prompt, workdir: $workdir, started_at: $ts, agent_teams: ($agent_teams == "1"), status: "running"}' \
+    --arg auto_push "${AUTO_PUSH:-0}" \
+    '{task_name: $name, telegram_group: $group, feishu_target: $feishu, callback_session: $session, prompt: $prompt, workdir: $workdir, started_at: $ts, agent_teams: ($agent_teams == "1"), auto_push: ($auto_push == "1"), status: "running"}' \
     > "$META_FILE"
 
 echo "📋 Task metadata written: $META_FILE"
 echo "   Task: $TASK_NAME"
 echo "   Group: ${TELEGRAM_GROUP:-none}"
 echo "   Agent Teams: ${AGENT_TEAMS:-no}"
+echo "   Auto Push: ${AUTO_PUSH:-no}"
 
 # ---- 2. Clear previous output ----
 > "$OUTPUT_FILE"
@@ -125,6 +130,14 @@ export OPENCLAW_GATEWAY="${OPENCLAW_GATEWAY:-http://127.0.0.1:18789}"
 WSL_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
 export http_proxy="http://${WSL_IP}:4780"
 export https_proxy="http://${WSL_IP}:4780"
+
+# Set git global proxy (for git clone/push/pull operations)
+GIT_PROXY="http://${WSL_IP}:4780"
+git config --global http.proxy "$GIT_PROXY"
+git config --global https.proxy "$GIT_PROXY"
+
+# Set no_proxy for local and domestic services
+export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
 
 if [ -n "$MODEL" ]; then
     export ANTHROPIC_MODEL="$MODEL"

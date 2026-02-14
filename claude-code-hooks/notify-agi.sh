@@ -54,12 +54,16 @@ fi
 TASK_NAME="unknown"
 TELEGRAM_GROUP=""
 FEISHU_TARGET=""
+AUTO_PUSH="false"
+WORKDIR=""
 
 if [ -f "$META_FILE" ]; then
     TASK_NAME=$(jq -r '.task_name // "unknown"' "$META_FILE" 2>/dev/null || echo "unknown")
     TELEGRAM_GROUP=$(jq -r '.telegram_group // ""' "$META_FILE" 2>/dev/null || echo "")
     FEISHU_TARGET=$(jq -r '.feishu_target // ""' "$META_FILE" 2>/dev/null || echo "")
-    log "Meta: task=$TASK_NAME group=$TELEGRAM_GROUP feishu=$FEISHU_TARGET"
+    AUTO_PUSH=$(jq -r '.auto_push // "false"' "$META_FILE" 2>/dev/null || echo "false")
+    WORKDIR=$(jq -r '.workdir // ""' "$META_FILE" 2>/dev/null || echo "")
+    log "Meta: task=$TASK_NAME group=$TELEGRAM_GROUP feishu=$FEISHU_TARGET auto_push=$AUTO_PUSH workdir=$WORKDIR"
 fi
 
 # ---- 过滤终端控制字符 ----
@@ -124,6 +128,41 @@ jq -n \
     > "${RESULT_DIR}/latest.json" 2>/dev/null
 
 log "Wrote latest.json"
+
+# ---- 自动 Git Push ----
+if [ "$AUTO_PUSH" = "true" ] && [ -n "$WORKDIR" ] && [ -d "$WORKDIR/.git" ]; then
+    log "Auto push enabled, starting git push..."
+    (
+        cd "$WORKDIR"
+        # 设置代理
+        WSL_IP=$(cat /etc/resolv.conf | grep nameserver | awk '{print $2}')
+        export http_proxy="http://${WSL_IP}:4780"
+        export https_proxy="http://${WSL_IP}:4780"
+        export no_proxy="localhost,127.0.0.1"
+
+        # 检查是否有变更
+        if git diff --quiet 2>/dev/null && git diff --cached --quiet 2>/dev/null; then
+            echo "[$(date -Iseconds)] Auto push: No changes to commit" >> "$LOG"
+            exit 0
+        fi
+
+        # 添加所有变更
+        git add -A 2>/dev/null || true
+
+        # 自动提交
+        git commit -m "Auto commit by Claude Code: $TASK_NAME" 2>/dev/null || true
+
+        # 推送到远程
+        if git push origin HEAD 2>&1; then
+            echo "[$(date -Iseconds)] Auto push: Successfully pushed" >> "$LOG"
+        else
+            echo "[$(date -Iseconds)] Auto push: Failed to push" >> "$LOG"
+        fi
+    ) &
+    log "Auto push started in background"
+else
+    log "Auto push skipped: auto_push=$AUTO_PUSH, workdir=$WORKDIR"
+fi
 
 # ---- 只在有输出时发送飞书消息 ----
 if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
