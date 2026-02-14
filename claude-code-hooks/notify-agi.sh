@@ -52,15 +52,22 @@ fi
 
 # ---- 读取任务元数据 ----
 TASK_NAME="unknown"
+TASK_PROMPT=""
+STARTED_AT=""
 TELEGRAM_GROUP=""
 FEISHU_TARGET=""
 
 if [ -f "$META_FILE" ]; then
     TASK_NAME=$(jq -r '.task_name // "unknown"' "$META_FILE" 2>/dev/null || echo "unknown")
+    TASK_PROMPT=$(jq -r '.prompt // ""' "$META_FILE" 2>/dev/null || echo "")
+    STARTED_AT=$(jq -r '.started_at // ""' "$META_FILE" 2>/dev/null || echo "")
     TELEGRAM_GROUP=$(jq -r '.telegram_group // ""' "$META_FILE" 2>/dev/null || echo "")
     FEISHU_TARGET=$(jq -r '.feishu_target // ""' "$META_FILE" 2>/dev/null || echo "")
     log "Meta: task=$TASK_NAME group=$TELEGRAM_GROUP feishu=$FEISHU_TARGET"
 fi
+
+# 提取 prompt 前20字作为标题
+TITLE=$(echo "$TASK_PROMPT" | head -c 20 | tr '\n' ' ' | sed 's/  */ /g')
 
 # ---- 过滤终端控制字符 ----
 filter_ansi() {
@@ -131,10 +138,35 @@ if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
     STATUS=$(detect_status "$OUTPUT")
     SUMMARY=$(echo "$OUTPUT" | tail -c 800 | tr '\n' ' ' | sed 's/  */ /g')
 
-    # 纯文本消息格式
-    MSG="任务: ${TASK_NAME}
-状态: ${STATUS}
-结果: ${SUMMARY:0:500}"
+    # 简洁清晰的纯文本消息格式 - 单行优先，避免格式问题
+    if [ "$STATUS" = "success" ]; then
+        STATUS_TEXT="[OK]"
+    else
+        STATUS_TEXT="[FAIL]"
+    fi
+
+    # 提取关键结果（取最后几行的核心内容，最多150字符），去除代码块
+    KEY_RESULT=$(echo "$OUTPUT" | tail -20 | head -5 | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-150)
+    # 进一步清理可能的特殊字符和代码块符号
+    KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g')
+
+    # 格式化时间（只显示时分）
+    if [ -n "$STARTED_AT" ]; then
+        STARTED_DISPLAY=$(echo "$STARTED_AT" | sed 's/.*T//' | cut -d':' -f1,2)
+    else
+        STARTED_DISPLAY="未知"
+    fi
+    SOLVED_TIME=$(date "+%H:%M")
+
+    # 提取关键结果，每行一条Bullet，去除代码块符号
+    KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /')
+
+    # 组装通知消息
+    MSG="${TITLE}
+任务提出时间: ${STARTED_DISPLAY}
+解决时间: ${SOLVED_TIME}
+结果:
+${KEY_LINES}"
 
     # 后台发送，不阻塞 Hook
     (
