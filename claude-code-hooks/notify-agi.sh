@@ -133,7 +133,7 @@ jq -n \
 log "Wrote latest.json"
 
 # ---- 只在有输出时发送飞书消息 ----
-if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
+if false; then # DISABLED:  && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
     # 检测任务状态
     STATUS=$(detect_status "$OUTPUT")
     SUMMARY=$(echo "$OUTPUT" | tail -c 800 | tr '\n' ' ' | sed 's/  */ /g')
@@ -195,5 +195,7 @@ jq -n \
     > "$WAKE_FILE" 2>/dev/null
 
 log "Wrote pending-wake.json"
+    # Wake up OpenClaw agent
+    "$OPENCLAW_BIN" gateway wake --mode next-heartbeat 2>/dev/null || true
 log "=== Hook completed ==="
 exit 0
