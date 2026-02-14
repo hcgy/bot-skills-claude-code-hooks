@@ -71,6 +71,44 @@ filter_ansi() {
                     -e 's/\a//g'
 }
 
+# ---- 检测任务状态（成功/失败） ----
+detect_status() {
+    local output="$1"
+    # 检测错误关键词
+    if echo "$output" | grep -qiE '(error|failed|failure|exception|denied|timeout|中断|失败|错误|异常)'; then
+        echo "failed"
+    else
+        echo "success"
+    fi
+}
+
+# ---- 发送飞书纯文本消息 ----
+send_feishu() {
+    local target="$1"
+    local msg="$2"
+
+    log "send_feishu: target=$target"
+
+    # 飞书是国内服务，直连不走代理
+    export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
+
+    local result
+    result=$("$OPENCLAW_BIN" message send \
+        --channel feishu \
+        --target "$target" \
+        --message "$msg" 2>&1)
+    local exit_code=$?
+    log "Result: exit=$exit_code, output=$result"
+
+    if [ $exit_code -eq 0 ]; then
+        log "Feishu text sent successfully"
+        return 0
+    fi
+
+    log "Feishu send failed (exit=$exit_code)"
+    return 1
+}
+
 OUTPUT=$(filter_ansi "$OUTPUT")
 
 # ---- 写入结果 JSON ----
@@ -89,20 +127,19 @@ log "Wrote latest.json"
 
 # ---- 只在有输出时发送飞书消息 ----
 if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
-    SUMMARY=$(echo "$OUTPUT" | tail -c 1000)
-    MSG="Claude Code 任务完成
+    # 检测任务状态
+    STATUS=$(detect_status "$OUTPUT")
+    SUMMARY=$(echo "$OUTPUT" | tail -c 800 | tr '\n' ' ' | sed 's/  */ /g')
 
-任务: ${TASK_NAME}
+    # 纯文本消息格式
+    MSG="任务: ${TASK_NAME}
+状态: ${STATUS}
+结果: ${SUMMARY:0:500}"
 
-结果:
-${SUMMARY:0:800}"
-    
     # 后台发送，不阻塞 Hook
     (
-        if "$OPENCLAW_BIN" message send \
-            --channel feishu \
-            --target "$FEISHU_TARGET" \
-            --message "$MSG" 2>/dev/null; then
+        export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
+        if send_feishu "$FEISHU_TARGET" "$MSG"; then
             echo "[$(date -Iseconds)] Background: Feishu sent" >> "$LOG"
         else
             echo "[$(date -Iseconds)] Background: Feishu failed" >> "$LOG"
