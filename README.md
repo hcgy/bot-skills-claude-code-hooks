@@ -92,10 +92,17 @@ cp claude-settings.json ~/.claude/settings.json
 
 ### 4. 开始使用
 
+**重要：使用 skill 方式调用（后台执行，不阻塞）：**
+
 ```bash
-# 派发任务
+# 派发任务（后台执行，立即返回）
 /claude-code-dispatch -f "user:飞书用户ID" -p "写一个 Python 计算器" --workdir "/项目路径"
+
+# 派发 Team 任务
+/claude-code-dispatch -f "user:ou_xxx" -p "用 Team 方案重构项目" --workdir "/path"
 ```
+
+**注意**：不要直接调用 `dispatch.sh`，要用 skill 方式 `/claude-code-dispatch`，这样才会后台执行不阻塞。
 
 ---
 
