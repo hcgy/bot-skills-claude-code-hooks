@@ -126,6 +126,9 @@ def build_headless_cmd(args: argparse.Namespace) -> list[str]:
 
 def build_agent_teams_env(args: argparse.Namespace) -> dict[str, str]:
     """Build environment dict with Agent Teams support."""
+    # Ensure proxy is configured before building env
+    configure_proxy()
+
     env = os.environ.copy()
     if args.agent_teams:
         env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
@@ -179,6 +182,9 @@ def run_interactive_tmux(args: argparse.Namespace) -> int:
     if not which("tmux"):
         print("tmux not found in PATH; cannot run interactive mode.", file=sys.stderr)
         return 2
+
+    # Ensure proxy is configured before running tmux
+    configure_proxy()
 
     socket_dir = args.tmux_socket_dir or os.environ.get("CLAWDBOT_TMUX_SOCKET_DIR") or f"{os.environ.get('TMPDIR', '/tmp')}/clawdbot-tmux-sockets"
     Path(socket_dir).mkdir(parents=True, exist_ok=True)
