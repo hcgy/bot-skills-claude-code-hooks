@@ -18,6 +18,15 @@
 | 占用大量 Context Tokens | 不消耗额外 tokens |
 | 等待时间长，阻塞其他任务 | OpenClaw 可以中途接收其他任务 |
 | 大任务需要一直保持会话 | Claude Code 后台独立运行 |
+| 无法调用 MCP 能力 | 支持 MCP 能力调用 |
+
+**重要**：只要 OpenClaw 调用 Claude Code，必须使用这种派发方式！
+
+传统方式（直接调用）弊端：
+- 占用大量 Context Tokens
+- 阻塞 OpenClaw 无法处理其他任务
+- 无法调用 MCP 能力
+- 大任务会导致会话过长
 
 **核心优势**：
 1. **派发模式**：OpenClaw 把任务派发给 Claude Code，立即返回
@@ -42,44 +51,43 @@ bot-skills-claude-code-hooks/
 
 ---
 
+---
+
 ## 快速开始
 
-### 1. 配置 Claude Code Hook
+### 1. 克隆项目
+
+```bash
+git clone https://github.com/hcgy/bot-skills-claude-code-hooks.git
+cd bot-skills-claude-code-hooks
+```
+
+### 2. 安装 Skill
+
+```bash
+# 复制 dispatch skill
+cp -r claude-code-dispatch ~/.openclaw/skills/
+
+# 或者手动创建链接
+mkdir -p ~/.openclaw/skills/claude-code-dispatch
+cp dispatch.sh ~/.openclaw/skills/claude-code-dispatch/
+cp -r scripts ~/.openclaw/skills/claude-code-dispatch/
+cp SKILL.md ~/.openclaw/skills/claude-code-dispatch/
+
+# 重启 OpenClaw
+openclaw gateway restart
+```
+
+### 3. 配置 Claude Code Hook
 
 ```bash
 # 复制 Hook 脚本
 cp claude-code-hooks/notify-agi.sh ~/.claude/hooks/
 chmod +x ~/.claude/hooks/notify-agi.sh
-```
 
-### 2. 配置 Claude Code
-
-复制 `claude-settings.json` 到 `~/.claude/settings.json`：
-
-```json
-{
-  "hooks": {
-    "Stop": [],
-    "SessionEnd": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/home/dministrator/.claude/hooks/notify-agi.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-### 3. 配置 OpenClaw Skill
-
-```bash
-cp -r claude-code-hooks/dispatch.sh ~/.openclaw/skills/claude-code-dispatch/
-cp -r scripts ~/.openclaw/skills/claude-code-dispatch/
-openclaw gateway restart
+# 复制 Claude Code 配置（需要替换为你的 API Key）
+cp claude-settings.json ~/.claude/settings.json
+# 注意：需要在 settings.json 中填入你的 ANTHROPIC_AUTH_TOKEN
 ```
 
 ### 4. 开始使用
