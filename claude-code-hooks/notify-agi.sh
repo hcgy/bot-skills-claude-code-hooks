@@ -97,14 +97,17 @@ if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
 结果:
 ${SUMMARY:0:800}"
     
-    if "$OPENCLAW_BIN" message send \
-        --channel feishu \
-        --target "$FEISHU_TARGET" \
-        --message "$MSG" 2>/dev/null; then
-        log "Sent Feishu message"
-    else
-        log "Feishu send failed"
-    fi
+    # 后台发送，不阻塞 Hook
+    (
+        if "$OPENCLAW_BIN" message send \
+            --channel feishu \
+            --target "$FEISHU_TARGET" \
+            --message "$MSG" 2>/dev/null; then
+            echo "[$(date -Iseconds)] Background: Feishu sent" >> "$LOG"
+        else
+            echo "[$(date -Iseconds)] Background: Feishu failed" >> "$LOG"
+        fi
+    ) &
 else
     log "Skipped sending - no output or no target"
 fi
