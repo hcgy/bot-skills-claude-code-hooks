@@ -148,7 +148,9 @@ if [ -n "$FEISHU_TARGET" ] && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
     # 提取关键结果（取最后几行的核心内容，最多150字符），去除代码块
     KEY_RESULT=$(echo "$OUTPUT" | tail -20 | head -5 | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-150)
     # 进一步清理可能的特殊字符和代码块符号
-    KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g; s/\*\*//g; s/\*//g')
+    # Remove duplicate bullets
+    KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/^- - /- /g; s/^-- /- /g')
+KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g; s/\*\*//g; s/\*//g')
 
     # 格式化时间（只显示时分）
     if [ -n "$STARTED_AT" ]; then
