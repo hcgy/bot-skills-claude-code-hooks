@@ -25,24 +25,24 @@
 ## 架构
 
 ```
-dispatch-claude-code.sh │
+dispatch.sh │
 ├─ 写入 task-meta.json（任务名、目标用户）
 ├─ 启动 Claude Code（via claude_code_run.py）
-└─ Agent Teams lead + sub-agents 运行
-   └─ Claude Code 完成 → Stop Hook 自动触发
-      ├─ notify-agi.sh 执行：
+└─ Claude Code 运行
+   └─ 完成 → SessionEnd Hook 触发
+      ├─ notify-agi.sh 执行（后台发送飞书）：
       │   ├─ 读取 task-meta.json + task-output.txt
       │   ├─ 写入 latest.json（完整结果）
-      │   ├─ openclaw message send → 飞书
+      │   ├─ openclaw message send → 飞书（后台）
       │   └─ 写入 pending-wake.json
-      └─ AGI heartbeat 读取 pending-wake.json（备选）
+      └─ AGI 主会话读取结果
 ```
 
 ## 文件说明
 
 | 文件 | 位置 | 作用 |
 |------|------|------|
-| claude-code-hooks/notify-agi.sh | ~/.claude/hooks/ | Stop Hook 脚本 |
+| claude-code-hooks/notify-agi.sh | ~/.claude/hooks/ | SessionEnd Hook 脚本 |
 | claude-code-hooks/dispatch.sh | ~/.openclaw/skills/claude-code-dispatch/ | 一键派发任务 |
 | scripts/claude_code_run.py | ~/.openclaw/skills/claude-code-dispatch/scripts/ | Claude Code PTY 运行器 |
 | claude-settings.json | ~/.claude/settings.json | Claude Code 配置（注册 hook） |
@@ -52,25 +52,13 @@ dispatch-claude-code.sh │
 ### 基础任务
 
 ```bash
-dispatch-claude-code.sh \
-  -p "实现一个 Python 爬虫" \
-  -n "my-scraper" \
-  -f "user:ou_xxx" \
-  --permission-mode "bypassPermissions" \
-  --workdir "/path/to/project"
+dispatch.sh -p "实现一个 Python 爬虫" -n "my-scraper" -f "user:ou_xxx" -w "/path/to/project"
 ```
 
 ### Agent Teams 任务
 
 ```bash
-dispatch-claude-code.sh \
-  -p "重构整个项目的测试" \
-  -n "test-refactor" \
-  -f "user:ou_xxx" \
-  --agent-teams \
-  --teammate-mode auto \
-  --permission-mode "bypassPermissions" \
-  --workdir "/path/to/project"
+dispatch.sh -p "重构整个项目的测试" -n "test-refactor" -f "user:ou_xxx" --agent-teams -w "/path/to/project"
 ```
 
 ### OpenClaw Skill 方式
@@ -84,44 +72,49 @@ dispatch-claude-code.sh \
 | 参数 | 说明 |
 |------|------|
 | -p, --prompt | 任务提示（必需） |
-| -n, --name | 任务名称（用于跟踪） |
+| -n, --name | 任务名称 |
 | -f, --feishu | 飞书用户 ID（结果自动发送） |
 | -w, --workdir | 工作目录 |
 | --agent-teams | 启用 Agent Teams |
-| --teammate-mode | Agent Teams 模式 (auto/in-process/tmux) |
-| --permission-mode | 权限模式 |
-| --allowed-tools | 允许的工具列表 |
+| --permission-mode | 权限模式（默认 bypassPermissions） |
 
 ## Hook 配置
 
-在 `~/.claude/settings.json` 中注册：
+在 `~/.claude/settings.json` 中注册（只用 SessionEnd）：
 
 ```json
 {
   "hooks": {
-    "Stop": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/notify-agi.sh", "timeout": 10}]}],
-    "SessionEnd": [{"hooks": [{"type": "command", "command": "~/.claude/hooks/notify-agi.sh", "timeout": 10}]}]
+    "Stop": [],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/dministrator/.claude/hooks/notify-agi.sh"
+          }
+        ]
+      }
+    ]
   }
 }
 ```
 
-## 防重复机制
-
-Hook 在 Stop 和 SessionEnd 都会触发。脚本使用 `.hook-lock` 文件去重：
-- 30秒内重复触发自动跳过
-- 只处理第一个事件（通常是 Stop）
+**注意**：
+- 只使用 SessionEnd Hook（Stop Hook 触发时输出文件可能未写完）
+- 飞书消息发送在后台执行，避免超时
 
 ## 结果文件
 
-任务完成后，结果写入 `/home/dministrator/.openclaw/data/claude-code-results/latest.json`：
+任务完成后，结果写入 `~/.openclaw/data/claude-code-results/latest.json`：
 
 ```json
 {
   "session_id": "...",
-  "timestamp": "2026-02-10T01:02:33+00:00",
-  "task_name": "my-task",
+  "timestamp": "2026-02-14T18:08:03+08:00",
+  "task_name": "adhoc-xxx",
   "feishu_target": "user:ou_xxx",
-  "output": "...",
+  "output": "已创建文件...",
   "status": "done"
 }
 ```
@@ -137,3 +130,4 @@ Hook 在 Stop 和 SessionEnd 都会触发。脚本使用 `.hook-lock` 文件去�
 ## 参考
 
 - 原文仓库：https://github.com/win4r/claude-code-hooks
+- 本仓库：https://github.com/hcgy/bot-skills-claude-code-hooks
