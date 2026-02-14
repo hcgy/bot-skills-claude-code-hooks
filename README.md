@@ -14,9 +14,16 @@
 
 | 传统方式 | 我们的方式 |
 |---------|-----------|
-| OpenClaw 轮询检查状态 | Claude Code 完成后自动回调 |
-| 每次轮询消耗 tokens | 不消耗额外 tokens |
-| 等待时间长 | 后台并行运行 |
+| OpenClaw 等待 Claude Code 完成 | OpenClaw 只负责派发，不等待 |
+| 占用大量 Context Tokens | 不消耗额外 tokens |
+| 等待时间长，阻塞其他任务 | OpenClaw 可以中途接收其他任务 |
+| 大任务需要一直保持会话 | Claude Code 后台独立运行 |
+
+**核心优势**：
+1. **派发模式**：OpenClaw 把任务派发给 Claude Code，立即返回
+2. **零轮询**：不需要反复检查任务状态
+3. **无阻塞**：OpenClaw 可以继续处理其他任务
+4. **自动回调**：Claude Code 完成后自动通知
 
 ---
 
