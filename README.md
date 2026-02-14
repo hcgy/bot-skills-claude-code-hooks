@@ -1,4 +1,4 @@
-# Claude Code Stop Hook — 任务完成自动回调
+# Claude Code Hook — 任务完成自动回调
 
 > 基于 OpenClaw + Claude Code 的零轮询开发方案
 
@@ -10,77 +10,44 @@
 用户 → OpenClaw → dispatch → Claude Code (后台) → Hook → 飞书通知 → 用户
 ```
 
-**优势**：
-- OpenClaw 不需要轮询，不消耗额外 tokens
-- Claude Code 在后台独立运行
-- 任务完成后自动推送通知到飞书
+### 为什么这样做？
+
+| 传统方式 | 我们的方式 |
+|---------|-----------|
+| OpenClaw 轮询检查状态 | Claude Code 完成后自动回调 |
+| 每次轮询消耗 tokens | 不消耗额外 tokens |
+| 等待时间长 | 后台并行运行 |
 
 ---
 
-当 Claude Code（含 Agent Teams）完成任务后，自动：
-- 将结果写入 JSON 文件
-- 发送飞书通知到指定用户
-- 写入 pending-wake 文件供 AGI 主会话读取
-
-## 架构
+## 项目结构
 
 ```
-dispatch.sh │
-├─ 写入 task-meta.json（任务名、目标用户）
-├─ 启动 Claude Code（via claude_code_run.py）
-└─ Claude Code 运行
-   └─ 完成 → SessionEnd Hook 触发
-      ├─ notify-agi.sh 执行（后台发送飞书）：
-      │   ├─ 读取 task-meta.json + task-output.txt
-      │   ├─ 写入 latest.json（完整结果）
-      │   ├─ openclaw message send → 飞书（后台）
-      │   └─ 写入 pending-wake.json
-      └─ AGI 主会话读取结果
+bot-skills-claude-code-hooks/
+├── README.md                      # 项目说明
+├── claude-settings.json           # Claude Code 配置示例
+├── claude-code-hooks/
+│   ├── notify-agi.sh              # SessionEnd Hook 脚本
+│   └── dispatch.sh                # 任务派发脚本
+└── scripts/
+    └── claude_code_run.py          # Claude Code PTY 运行器
 ```
 
-## 文件说明
+---
 
-| 文件 | 位置 | 作用 |
-|------|------|------|
-| claude-code-hooks/notify-agi.sh | ~/.claude/hooks/ | SessionEnd Hook 脚本 |
-| claude-code-hooks/dispatch.sh | ~/.openclaw/skills/claude-code-dispatch/ | 一键派发任务 |
-| scripts/claude_code_run.py | ~/.openclaw/skills/claude-code-dispatch/scripts/ | Claude Code PTY 运行器 |
-| claude-settings.json | ~/.claude/settings.json | Claude Code 配置（注册 hook） |
+## 快速开始
 
-## 使用方法
-
-### 基础任务
+### 1. 配置 Claude Code Hook
 
 ```bash
-dispatch.sh -p "实现一个 Python 爬虫" -n "my-scraper" -f "user:ou_xxx" -w "/path/to/project"
+# 复制 Hook 脚本
+cp claude-code-hooks/notify-agi.sh ~/.claude/hooks/
+chmod +x ~/.claude/hooks/notify-agi.sh
 ```
 
-### Agent Teams 任务
+### 2. 配置 Claude Code
 
-```bash
-dispatch.sh -p "重构整个项目的测试" -n "test-refactor" -f "user:ou_xxx" --agent-teams -w "/path/to/project"
-```
-
-### OpenClaw Skill 方式
-
-```bash
-/claude-code-dispatch -f "user:ou_xxx" -p "任务描述" --workdir "/path"
-```
-
-## 参数
-
-| 参数 | 说明 |
-|------|------|
-| -p, --prompt | 任务提示（必需） |
-| -n, --name | 任务名称 |
-| -f, --feishu | 飞书用户 ID（结果自动发送） |
-| -w, --workdir | 工作目录 |
-| --agent-teams | 启用 Agent Teams |
-| --permission-mode | 权限模式（默认 bypassPermissions） |
-
-## Hook 配置
-
-在 `~/.claude/settings.json` 中注册（只用 SessionEnd）：
+复制 `claude-settings.json` 到 `~/.claude/settings.json`：
 
 ```json
 {
@@ -100,9 +67,125 @@ dispatch.sh -p "重构整个项目的测试" -n "test-refactor" -f "user:ou_xxx"
 }
 ```
 
-**注意**：
-- 只使用 SessionEnd Hook（Stop Hook 触发时输出文件可能未写完）
-- 飞书消息发送在后台执行，避免超时
+### 3. 配置 OpenClaw Skill
+
+```bash
+cp -r claude-code-hooks/dispatch.sh ~/.openclaw/skills/claude-code-dispatch/
+cp -r scripts ~/.openclaw/skills/claude-code-dispatch/
+openclaw gateway restart
+```
+
+### 4. 开始使用
+
+```bash
+# 派发任务
+/claude-code-dispatch -f "user:飞书用户ID" -p "写一个 Python 计算器" --workdir "/项目路径"
+```
+
+---
+
+## 工作原理
+
+### 1. 任务派发流程
+
+```
+1. 用户告诉 OpenClaw 一个开发任务
+2. OpenClaw 调用 dispatch 脚本
+3. dispatch 启动 Claude Code（后台运行）
+4. OpenClaw 立即返回，不阻塞
+5. 用户可以继续做其他事
+```
+
+### 2. 通知回调流程
+
+```
+Claude Code 完成任务
+       ↓
+   自动触发 SessionEnd Hook
+       ↓
+   notify-agi.sh 执行：
+   ├─ 读取 task-output.txt
+   ├─ 写入 latest.json
+   ├─ 后台发送飞书通知
+   └─ 写入 pending-wake.json
+       ↓
+   用户收到飞书通知
+```
+
+### 3. 为什么只用 SessionEnd Hook？
+
+Claude Code 有两个生命周期点：
+
+| Hook 名称 | 触发时机 | 说明 |
+|-----------|---------|------|
+| **Stop** | 生成停止时 | 可能输出未完成 |
+| **SessionEnd** | 会话结束时 | 输出完整 |
+
+**问题**：Stop Hook 触发时，输出文件可能还没写完。
+
+**解决**：只用 SessionEnd Hook，飞书消息后台发送避免超时。
+
+---
+
+## dispatch 参数
+
+| 参数 | 简写 | 说明 | 必需 |
+|------|------|------|------|
+| --feishu | -f | 飞书用户 ID | ✅ |
+| --prompt | -p | 任务描述 | ✅ |
+| --workdir | -w | 工作目录 | 可选 |
+| --permission-mode | - | 权限模式（默认 bypassPermissions） | 可选 |
+| --agent-teams | - | 启用 Agent Teams | 可选 |
+| --name | -n | 任务名称 | 可选 |
+
+### 示例
+
+```bash
+# 简单任务
+/claude-code-dispatch -f "user:ou_xxx" -p "写一个 Hello World"
+
+# 指定工作目录
+/claude-code-dispatch -f "user:ou_xxx" -p "写一个 Flask API" -w "/home/user/project"
+
+# Agent Teams 模式（复杂任务）
+/claude-code-dispatch -f "user:ou_xxx" --agent-teams -p "重构整个前端项目"
+```
+
+---
+
+## 核心文件说明
+
+### notify-agi.sh
+
+位置：`~/.claude/hooks/notify-agi.sh`
+
+功能：
+1. 读取 Claude Code 的输出（task-output.txt）
+2. 读取任务元数据（task-meta.json）
+3. 写入完整结果（latest.json）
+4. 后台发送飞书通知
+5. 写入 pending-wake.json
+
+### dispatch.sh
+
+位置：`~/.openclaw/skills/claude-code-dispatch/dispatch.sh`
+
+功能：
+1. 写入任务元数据（task-meta.json）
+2. 清空上次输出
+3. 启动 Claude Code（通过 claude_code_run.py）
+4. 等待完成
+
+### claude_code_run.py
+
+位置：`~/.openclaw/skills/claude-code-dispatch/scripts/claude_code_run.py`
+
+功能：
+- 在 PTY 中运行 Claude Code
+- 支持 Agent Teams
+- 支持各种参数
+
+---
 
 ## 结果文件
 
@@ -110,24 +193,60 @@ dispatch.sh -p "重构整个项目的测试" -n "test-refactor" -f "user:ou_xxx"
 
 ```json
 {
-  "session_id": "...",
+  "session_id": "",
   "timestamp": "2026-02-14T18:08:03+08:00",
-  "task_name": "adhoc-xxx",
+  "task_name": "adhoc-1771063645",
   "feishu_target": "user:ou_xxx",
-  "output": "已创建文件...",
+  "output": "已创建 bg_test.txt",
   "status": "done"
 }
 ```
 
-## 文件路径
+### 文件说明
 
-- Hook 脚本: `~/.claude/hooks/notify-agi.sh`
-- dispatch 脚本: `~/.openclaw/skills/claude-code-dispatch/dispatch.sh`
-- Runner: `~/.openclaw/skills/claude-code-dispatch/scripts/claude_code_run.py`
-- 结果目录: `~/.openclaw/data/claude-code-results/`
-- OpenClaw Skill: `~/.openclaw/skills/claude-code-dispatch/`
+| 文件 | 路径 | 说明 |
+|------|------|------|
+| task-meta.json | ~/.openclaw/data/claude-code-results/ | 任务元数据 |
+| task-output.txt | ~/.openclaw/data/claude-code-results/ | Claude Code 原始输出 |
+| latest.json | ~/.openclaw/data/claude-code-results/ | 完整结果 |
+| pending-wake.json | ~/.openclaw/data/claude-code-results/ | 唤醒文件 |
+| hook.log | ~/.openclaw/data/claude-code-results/ | Hook 日志 |
+
+---
+
+## 常见问题
+
+### Q: 通知发两次怎么办？
+**A**: 当前只用 SessionEnd Hook，不会重复
+
+### Q: 通知内容为空怎么办？
+**A**: 检查 hook.log 确认输出文件是否有内容
+
+### Q: 如何调试？
+**A**: 查看日志
+```bash
+tail -f ~/.openclaw/data/claude-code-results/hook.log
+```
+
+### Q: Hook 需要手动触发吗？
+**A**: 不需要，Claude Code 会自动触发 SessionEnd
+
+### Q: 大任务超时怎么办？
+**A**: 飞书消息后台发送，没有超时限制
+
+---
 
 ## 参考
 
 - 原文仓库：https://github.com/win4r/claude-code-hooks
 - 本仓库：https://github.com/hcgy/bot-skills-claude-code-hooks
+
+---
+
+## 更新日志
+
+### 2026-02-14
+- 初始化项目
+- 只用 SessionEnd Hook
+- 飞书消息后台发送
+- 移除超时限制
