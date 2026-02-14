@@ -1,27 +1,31 @@
 {
-  "model": "claude-opus-4-5-20251101",
+  "env": {
+    "ANTHROPIC_BASE_URL": "https://api.minimaxi.com/anthropic",
+    "ANTHROPIC_AUTH_TOKEN": "sk-cp-g_Ol45oSAGV-VnAarFXDHREPp3m8QWGok1zsBiZGm3OizpGsE0xUzV-g0keW_kzk1psUE8GTfhuhUVuzGDg6-WHnvGwj24TUKppqfElmWvQFDxXOUCZBOUY",
+    "API_TIMEOUT_MS": "3000000",
+    "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC": 1,
+    "CLAUDE_CODE_ACCEPT_BYPASS_WARNINGS": 1,
+    "ANTHROPIC_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_SMALL_FAST_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_SONNET_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_OPUS_MODEL": "MiniMax-M2.5",
+    "ANTHROPIC_DEFAULT_HAIKU_MODEL": "MiniMax-M2.5"
+  },
   "hooks": {
-    "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/home/ubuntu/.claude/hooks/notify-agi.sh",
-            "timeout": 10
-          }
-        ]
-      }
-    ],
+    "Stop": [],
     "SessionEnd": [
       {
         "hooks": [
           {
             "type": "command",
-            "command": "/home/ubuntu/.claude/hooks/notify-agi.sh",
-            "timeout": 10
+            "command": "/home/dministrator/.claude/hooks/notify-agi.sh"
           }
         ]
       }
     ]
-  }
+  },
+  "model": "claude-opus-4-5-20251101",
+  "noVerify": true,
+  "skipConfirmations": true,
+  "disableToolConfirmation": true
 }
