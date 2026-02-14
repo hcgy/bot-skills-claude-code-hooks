@@ -71,6 +71,15 @@ fi
 # ---- 1. Write task metadata ----
 mkdir -p "$RESULT_DIR"
 
+# Auto-detect Agent Teams: if prompt contains "Team" or "团队", enable Agent Teams
+if [ -z "$AGENT_TEAMS" ]; then
+    if echo "$PROMPT" | grep -qiE "Team|Teams|团队|协作|并行"; then
+        AGENT_TEAMS="1"
+        export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1
+        echo "🔍 Auto-detected Team keyword, enabling Agent Teams"
+    fi
+fi
+
 jq -n \
     --arg name "$TASK_NAME" \
     --arg group "$TELEGRAM_GROUP" \
@@ -122,8 +131,15 @@ echo "   Command: ${CMD[*]}"
 echo ""
 
 # Use tee to capture output while also displaying it
-"${CMD[@]}" 2>&1 | tee "$TASK_OUTPUT"
+# Use PYTHONUNBUFFERED to disable python buffering
+export PYTHONUNBUFFERED=1
+export STDERR_BUFFERED=0
+stdbuf -oL -eL "${CMD[@]}" 2>&1 | tee "$TASK_OUTPUT"
 EXIT_CODE=${PIPESTATUS[0]}
+
+# Sync and wait for tee to flush
+sync
+sleep 1
 
 echo ""
 echo "✅ Claude Code exited with code: $EXIT_CODE"
