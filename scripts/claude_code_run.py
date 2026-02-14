@@ -25,6 +25,41 @@ import sys
 import time
 from pathlib import Path
 
+
+# =============================================================================
+# Proxy configuration for WSL/Agent Teams mode
+# =============================================================================
+
+def get_wsl_host_ip() -> str | None:
+    """Get the Windows host IP from WSL's /etc/resolv.conf."""
+    try:
+        result = os.popen("cat /etc/resolv.conf | grep nameserver | awk '{print $2}'").read().strip()
+        if result:
+            return result
+    except OSError:
+        pass
+    return None
+
+
+def configure_proxy() -> None:
+    """Configure HTTP/HTTPS proxy for subprocess communication."""
+    # Skip if proxy already configured
+    if os.environ.get("http_proxy") or os.environ.get("https_proxy"):
+        return
+
+    wsl_ip = get_wsl_host_ip()
+    if wsl_ip:
+        proxy_url = f"http://{wsl_ip}:4780"
+        os.environ["http_proxy"] = proxy_url
+        os.environ["https_proxy"] = proxy_url
+        os.environ["HTTP_PROXY"] = proxy_url
+        os.environ["HTTPS_PROXY"] = proxy_url
+
+
+# Configure proxy at module load time
+configure_proxy()
+
+
 DEFAULT_CLAUDE = os.environ.get("CLAUDE_CODE_BIN", "/home/dministrator/.local/bin/claude")
 
 
@@ -94,6 +129,12 @@ def build_agent_teams_env(args: argparse.Namespace) -> dict[str, str]:
     env = os.environ.copy()
     if args.agent_teams:
         env["CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS"] = "1"
+
+    # Explicitly propagate proxy settings to subprocesses
+    for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+        if proxy_var in os.environ:
+            env[proxy_var] = os.environ[proxy_var]
+
     return env
 
 
@@ -156,6 +197,15 @@ def run_interactive_tmux(args: argparse.Namespace) -> int:
         subprocess.check_call(tmux_cmd(socket_path, "send-keys", "-t", target, "-l", "--", "export CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1"))
         subprocess.check_call(tmux_cmd(socket_path, "send-keys", "-t", target, "Enter"))
         time.sleep(0.3)
+
+        # Propagate proxy settings to tmux session for subprocess communication
+        for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
+            proxy_val = os.environ.get(proxy_var)
+            if proxy_val:
+                subprocess.check_call(tmux_cmd(socket_path, "send-keys", "-t", target, "-l", "--",
+                    f"export {proxy_var}={shlex.quote(proxy_val)}"))
+                subprocess.check_call(tmux_cmd(socket_path, "send-keys", "-t", target, "Enter"))
+                time.sleep(0.1)
 
     claude_parts = [args.claude_bin]
     if args.permission_mode:
