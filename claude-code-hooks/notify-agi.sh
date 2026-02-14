@@ -31,6 +31,9 @@ log "session=$SESSION_ID cwd=$CWD event=$EVENT"
 # ---- 读取任务输出 ----
 OUTPUT=""
 
+# 等待 tee 管道 flush
+sleep 1
+
 if [ -f "$RESULT_DIR/task-output.txt" ] && [ -s "$RESULT_DIR/task-output.txt" ]; then
     OUTPUT=$(tail -c 4000 "$RESULT_DIR/task-output.txt")
     log "Output from task-output.txt (${#OUTPUT} chars)"
