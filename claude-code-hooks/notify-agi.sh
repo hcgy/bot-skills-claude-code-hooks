@@ -311,9 +311,8 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
         STATUS_ICON="❌"
     fi
 
-    MSG="${STATUS_ICON} 任务完成
-
-${KEY_LINES}"
+    # 只显示完成项列表，不加任何标题
+    MSG="${KEY_LINES}"
 
     # 同步发送
     export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
