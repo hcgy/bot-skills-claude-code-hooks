@@ -104,7 +104,10 @@ filter_debug_logs() {
                     -e '/ANTHROPIC_LOG/d' \
                     -e '/^\[info\]:/d' \
                     -e '/^\[plugins\]:/d' \
-                    -e 's/\[?\]?[0-9]*[a-zA-Z]//g'
+                    -e 's/\[?\]?[0-9]*[a-zA-Z]//g' \
+                    -e '/^$/d' \
+                    -e '/^[[:space:]]*$/d' \
+        | awk '!seen[$0]++'  # 去除重复行（保留首次出现的行）
 }
 
 # ---- 检测任务状态（成功/失败）----
@@ -287,8 +290,8 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
     fi
     SOLVED_TIME=$(date "+%H:%M")
 
-    # 提取关键结果，每行一条Bullet，去除代码块符号
-    KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /')
+    # 提取关键结果，每行一条Bullet，去除代码块符号，并去重
+    KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /' | awk '!seen[$0]++')
 
     # 如果 KEY_LINES 为空，用 prompt 作为结果
     if [ -z "$KEY_LINES" ] && [ -n "$TASK_PROMPT" ]; then
