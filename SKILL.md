@@ -233,3 +233,74 @@ for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
 约束：不要浪费 token" \
   --workdir "/path/to/project"
 ```
+
+## 最近优化记录
+
+### 2024-xx-xx 优化更新
+
+#### 1. 飞书通知格式优化（卡片样式）
+
+优化了通知的视觉呈现，从普通文本改为富文本卡片样式：
+
+- 使用飞书消息卡片（Interactive Card）格式
+- 添加任务状态颜色标识（成功/失败/进行中）
+- 优化信息布局，便于阅读
+- 包含任务名称、执行时间、状态等关键信息
+
+**关键文件**：`hooks/feishu_notify.py`
+
+#### 2. 修复中文标题截断问题
+
+之前使用 `cut -c` 按字节截断中文字符，导致中文标题显示乱码。修复方案：
+
+```bash
+# 修复前（按字节截断，产生乱码）
+echo "$title" | cut -c 1-30
+
+# 修复后（按字符截断，兼容中文）
+echo "$title" | awk '{print substr($0, 1, 30)}'
+```
+
+使用 `awk` 的 `substr()` 函数按字符截断，完美支持中文字符。
+
+**关键文件**：`hooks/feishu_notify.sh`
+
+#### 3. 修复重复通知问题
+
+之前同时配置了 SessionEnd 和 Stop 两种 Hook，导致任务完成时收到两条通知。修复方案：
+
+- 移除 SessionEnd Hook 配置
+- 只保留 Stop Hook（任务真正结束时触发）
+- 避免重复通知打扰
+
+**关键文件**：`config/hooks.yaml`
+
+#### 4. 修复输出捕获问题
+
+之前的 Hook 实现中使用了手动调用 Hook 的方式来捕获输出，这可能导致输出不完整或重复处理。修复方案：
+
+- 移除手动 Hook 调用
+- 依赖 Claude Code 原生的 Hook 机制
+- 确保输出被正确捕获和传递
+
+**关键文件**：`scripts/claude_code_run.py`
+
+#### 5. 修复 Claude Code 登录问题
+
+在使用 `--permission-mode resume` 恢复会话时，可能遇到登录状态失效的问题。修复方案：
+
+- 在 `settings.json` 中配置 `env` 环境变量
+- 确保认证信息在会话恢复时可用
+- 支持自定义环境变量传递
+
+**关键文件**：`scripts/claude_code_run.py`
+
+#### 6. 状态检测优化
+
+优化了任务状态的判断逻辑，使用更精确的错误关键词检测：
+
+- 扩展错误关键词列表（error, failed, exception, refused, unauthorized 等）
+- 区分大小写和小写形式的错误检测
+- 避免误判成功状态为失败
+
+**关键文件**：`hooks/feishu_notify.sh`
