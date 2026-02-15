@@ -96,15 +96,12 @@ filter_ansi() {
 }
 
 # ---- 过滤 Claude Code 调试日志 ----
+# 只过滤明确的调试前缀，保留关键输出（如任务结果、commit信息等）
 filter_debug_logs() {
-    echo "$1" | sed -e '/^{"level":"warn"/d' \
-                    -e '/^{"level":"info"/d' \
-                    -e '/^\[BashTool\]/d' \
-                    -e '/Pre-flight check/d' \
-                    -e '/ANTHROPIC_LOG/d' \
-                    -e '/^\[info\]:/d' \
+    echo "$1" | sed -e '/^\[BashTool\] Pre-flight check/d' \
                     -e '/^\[plugins\]:/d' \
-                    -e 's/\[?\]?[0-9]*[a-zA-Z]//g' \
+                    -e '/^\[info\]:/d' \
+                    -e '/ANTHROPIC_LOG/d' \
                     -e '/^$/d' \
                     -e '/^[[:space:]]*$/d' \
         | awk '!seen[$0]++'  # 去除重复行（保留首次出现的行）
