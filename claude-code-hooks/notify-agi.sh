@@ -287,12 +287,21 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
     fi
     SOLVED_TIME=$(date "+%H:%M")
 
-    # 提取关键结果，每行一条Bullet，去除代码块符号，并去重
-    KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /' | awk '!seen[$0]++')
+    # 提取关键完成项：以 ✅、-、* 开头的行
+    # 如果没有，则提取最后几行的总结
+    KEY_LINES=$(echo "$OUTPUT" | grep -E '^[✅\-*]|^[[:space:]]*[-*]' | head -10 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g')
 
-    # 如果 KEY_LINES 为空，用 prompt 作为结果
-    if [ -z "$KEY_LINES" ] && [ -n "$TASK_PROMPT" ]; then
-        KEY_LINES="- 任务: $TASK_PROMPT"
+    # 如果没有找到以 -、* 开头的行，提取最后几行总结
+    if [ -z "$KEY_LINES" ]; then
+        KEY_LINES=$(echo "$OUTPUT" | tail -10 | grep -v '^[[:space:]]*$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g')
+    fi
+
+    # 限制每行长度，并添加 - 前缀格式化为列表
+    KEY_LINES=$(echo "$KEY_LINES" | sed 's/^[[:space:]]*//' | sed 's/^/✅ /' | head -5 | awk '!seen[$0]++')
+
+    # 如果 KEY_LINES 为空，用简单提示
+    if [ -z "$KEY_LINES" ]; then
+        KEY_LINES="✅ 任务已完成"
     fi
 
     # 组装通知消息 - 使用优化的纯文本格式
