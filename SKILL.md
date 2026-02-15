@@ -214,6 +214,15 @@ for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
 - ❌ 等待 Claude Code 完成
 - ❌ 用 direct bash 调用 Claude Code
 
+### 本地代码同步
+- 代码推送到 GitHub 后，需要手动同步到本地 `~/.claude/hooks/` 目录
+- 否则本地运行的是旧版本，导致通知格式等修改不生效
+- 同步命令示例：
+  ```bash
+  cp -r /home/dministrator/.openclaw/workspace/bot-skills-claude-code-hooks/hooks/* ~/.claude/hooks/
+  ```
+- 或者使用仓库的 `sync_to_local.sh` 脚本（如果存在）
+
 ### 工作流程
 1. 理解用户需求
 2. 派发任务: /claude-code-dispatch -f "user:ou_xxx" -p "任务描述" --workdir "项目路径"
