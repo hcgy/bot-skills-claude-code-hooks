@@ -95,11 +95,23 @@ filter_ansi() {
                     -e 's/\a//g'
 }
 
-# ---- 检测任务状态（成功/失败） ----
+# ---- 过滤 Claude Code 调试日志 ----
+filter_debug_logs() {
+    echo "$1" | sed -e '/^{"level":"warn"/d' \
+                    -e '/^{"level":"info"/d' \
+                    -e '/^\[BashTool\]/d' \
+                    -e '/Pre-flight check/d' \
+                    -e '/ANTHROPIC_LOG/d' \
+                    -e '/^\[info\]:/d' \
+                    -e '/^\[plugins\]:/d' \
+                    -e 's/\[?\]?[0-9]*[a-zA-Z]//g'
+}
+
+# ---- 检测任务状态（成功/失败）----
 detect_status() {
     local output="$1"
-    # 检测错误关键词
-    if echo "$output" | grep -qiE '(error|failed|failure|exception|denied|timeout|中断|失败|错误|异常)'; then
+    # 检测致命错误关键词（更精确）
+    if echo "$output" | grep -qiE '(fatal|crash|abort|cannot|unable to|denied|permission denied|command not found|not found|404|500|connection refused)'; then
         echo "failed"
     else
         echo "success"
@@ -231,6 +243,7 @@ send_feishu_text() {
 }
 
 OUTPUT=$(filter_ansi "$OUTPUT")
+OUTPUT=$(filter_debug_logs "$OUTPUT")
 
 # ---- 写入结果 JSON ----
 jq -n \

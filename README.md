@@ -385,6 +385,7 @@ tail -f ~/.openclaw/data/claude-code-results/hook.log
 ## 更新日志
 
 ### 2026-02-15 (本次优化)
+- 过滤调试日志：添加 filter_debug_logs 函数，过滤 Claude Code 调试日志（{"level":"warn"、{"level":"info"、[BashTool]、Pre-flight check、[info]:、[plugins]: 等）
 - 飞书通知格式优化：添加卡片样式通知（send_feishu_card 函数）
 - 修复中文标题截断问题：使用 awk 按字符截断而非字节截断
 - 修复重复通知问题：关闭 SessionEnd Hook，只保留 Stop Hook
