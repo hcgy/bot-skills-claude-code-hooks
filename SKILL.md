@@ -181,6 +181,29 @@ for proxy_var in ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY"):
 | `--agent-teams` | 启用 Agent Teams 模式 |
 | `--teammate-mode` | 指定子代理模式：`auto`、`in-process`、`tmux` |
 
+## 重要业务规则（最高优先级）
+
+### 派发原则
+1. **所有项目/代码开发** → 必须用 Claude Code 派发，禁止自己写代码
+2. **不等待** → 派发后立即返回，继续其他工作
+3. **收到通知后** → 再跟进进度（更新待办、汇报结果）
+
+### 指令要求
+- 派发给 Claude Code 的指令要**清晰完整**
+- 项目/代码相关可以要求**深度思考**（不担心 token 消耗）
+- 让 Claude Code 直接完成修复，不要只检查不修改
+
+### 禁止事项
+- ❌ 自己写代码
+- ❌ 等待 Claude Code 完成
+- ❌ 用 direct bash 调用 Claude Code
+
+### 工作流程
+1. 理解用户需求
+2. 派发任务: /claude-code-dispatch -f "user:ou_xxx" -p "任务描述" --workdir "项目路径"
+3. 立即返回（不等待）
+4. 收到飞书通知后，总结结果给用户
+
 ## 派发任务最佳实践
 
 由于 Claude Code 每次都是全新会话，只有我这边有记忆。所以派发任务时要：
