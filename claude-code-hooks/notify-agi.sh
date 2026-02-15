@@ -8,6 +8,13 @@ RESULT_DIR="/home/dministrator/.openclaw/data/claude-code-results"
 META_FILE="${RESULT_DIR}/task-meta.json"
 OPENCLAW_BIN="/home/dministrator/.npm-global/bin/openclaw"
 
+# MANUAL_CALL 模式：手动调用，跳过 stdin 读取，从文件获取完整输出
+MANUAL_MODE=false
+if [ "${MANUAL_CALL:-}" = "1" ]; then
+    MANUAL_MODE=true
+    echo "[$(date -Iseconds)] MANUAL_CALL mode enabled" >> "$LOG"
+fi
+
 mkdir -p "$RESULT_DIR"
 
 log() { echo "[$(date -Iseconds)] $*" >> "$LOG"; }
@@ -16,7 +23,9 @@ log "=== Hook fired ==="
 
 # ---- 读 stdin ----
 INPUT=""
-if [ -t 0 ]; then
+if [ "$MANUAL_MODE" = true ]; then
+    log "MANUAL_MODE: skipping stdin"
+elif [ -t 0 ]; then
     log "stdin is tty, skip"
 elif [ -e /dev/stdin ]; then
     INPUT=$(timeout 2 cat /dev/stdin 2>/dev/null || true)
@@ -37,6 +46,14 @@ sleep 1
 if [ -f "$RESULT_DIR/task-output.txt" ] && [ -s "$RESULT_DIR/task-output.txt" ]; then
     OUTPUT=$(tail -c 4000 "$RESULT_DIR/task-output.txt")
     log "Output from task-output.txt (${#OUTPUT} chars)"
+fi
+
+# 如果还是空的，尝试从 latest.json 读取
+if [ -z "$OUTPUT" ] && [ -f "${RESULT_DIR}/latest.json" ]; then
+    OUTPUT=$(jq -r '.output // ""' "${RESULT_DIR}/latest.json" 2>/dev/null | tail -c 4000)
+    if [ -n "$OUTPUT" ]; then
+        log "Output from latest.json (${#OUTPUT} chars)"
+    fi
 fi
 
 if [ -z "$OUTPUT" ] && [ -f "/tmp/claude-code-output.txt" ] && [ -s "/tmp/claude-code-output.txt" ]; then
@@ -66,8 +83,8 @@ if [ -f "$META_FILE" ]; then
     log "Meta: task=$TASK_NAME group=$TELEGRAM_GROUP feishu=$FEISHU_TARGET"
 fi
 
-# 提取 prompt 前20字作为标题
-TITLE=$(echo "$TASK_PROMPT" | head -c 20 | tr '\n' ' ' | sed 's/  */ /g')
+# 提取 prompt 前20字作为标题（按字符截断，避免中文被截断）
+TITLE=$(echo "$TASK_PROMPT" | sed 's/[^[:print:]]//g' | awk '{print substr($0,1,20)}')
 
 # ---- 过滤终端控制字符 ----
 filter_ansi() {
@@ -89,14 +106,111 @@ detect_status() {
     fi
 }
 
-# ---- 发送飞书纯文本消息 ----
-send_feishu() {
+# ---- 发送飞书卡片消息 ----
+send_feishu_card() {
+    local target="$1"
+    local title="$2"
+    local status="$3"
+    local started="$4"
+    local solved="$5"
+    local result_text="$6"
+
+    log "send_feishu_card: target=$target title=$title"
+
+    # 飞书是国内服务，直连不走代理
+    export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
+
+    # 构建飞书卡片 JSON
+    # 清理结果文本中的特殊字符
+    result_text=$(echo "$result_text" | sed 's/"/\\"/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | tr '\n' ' ' | sed 's/  */ /g' | cut -c1-500)
+
+    # 根据状态设置颜色和图标
+    if [ "$status" = "success" ]; then
+        status_icon="✅"
+        status_color="green"
+    else
+        status_icon="❌"
+        status_color="red"
+    fi
+
+    # 构建卡片 JSON
+    CARD_JSON=$(cat <<EOF
+{
+  "config": {
+    "wide_screen_mode": true
+  },
+  "header": {
+    "title": {
+      "tag": "plain_text",
+      "content": "$status_icon 任务完成: $title"
+    },
+    "template": "$status_color"
+  },
+  "elements": [
+    {
+      "tag": "div",
+      "text": {
+        "tag": "lark_md",
+        "content": "**状态:** $status_icon $status"
+      }
+    },
+    {
+      "tag": "div",
+      "text": {
+        "tag": "lark_md",
+        "content": "**提出时间:** $started"
+      }
+    },
+    {
+      "tag": "div",
+      "text": {
+        "tag": "lark_md",
+        "content": "**完成时间:** $solved"
+      }
+    },
+    {
+      "tag": "hr"
+    },
+    {
+      "tag": "div",
+      "text": {
+        "tag": "lark_md",
+        "content": "**结果:**\n$result_text"
+      }
+    }
+  ]
+}
+EOF
+)
+
+    local result
+    # 同时发送 card 和 message（fallback），确保至少一个能成功
+    result=$("$OPENCLAW_BIN" message send \
+        --channel feishu \
+        --target "$target" \
+        --card "$CARD_JSON" \
+        --message "📋 任务完成: $title" 2>&1)
+    local exit_code=$?
+    log "Result: exit=$exit_code, output=$result"
+
+    if [ $exit_code -eq 0 ]; then
+        log "Feishu card sent successfully"
+        return 0
+    fi
+
+    log "Feishu card send failed (exit=$exit_code), falling back to text"
+    # 回退到纯文本
+    send_feishu_text "$target" "$title\n状态: $status\n提出: $started\n完成: $solved\n结果: $result_text"
+    return $?
+}
+
+# ---- 发送飞书纯文本消息（回退用）----
+send_feishu_text() {
     local target="$1"
     local msg="$2"
 
-    log "send_feishu: target=$target"
+    log "send_feishu_text: target=$target"
 
-    # 飞书是国内服务，直连不走代理
     export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
 
     local result
@@ -133,7 +247,7 @@ jq -n \
 log "Wrote latest.json"
 
 # ---- 只在有输出时发送飞书消息 ----
-if false; then # DISABLED:  && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
+if true; then # DISABLED:  && [ -x "$OPENCLAW_BIN" ] && [ -n "$OUTPUT" ]; then
     # 检测任务状态
     STATUS=$(detect_status "$OUTPUT")
     SUMMARY=$(echo "$OUTPUT" | tail -c 800 | tr '\n' ' ' | sed 's/  */ /g')
@@ -163,22 +277,34 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
     # 提取关键结果，每行一条Bullet，去除代码块符号
     KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /')
 
-    # 组装通知消息
-    MSG="${TITLE}
-任务提出时间: ${STARTED_DISPLAY}
-解决时间: ${SOLVED_TIME}
-结果:
+    # 如果 KEY_LINES 为空，用 prompt 作为结果
+    if [ -z "$KEY_LINES" ] && [ -n "$TASK_PROMPT" ]; then
+        KEY_LINES="- 任务: $TASK_PROMPT"
+    fi
+
+    # 组装通知消息 - 使用优化的纯文本格式
+    if [ "$STATUS" = "success" ]; then
+        STATUS_ICON="✅"
+    else
+        STATUS_ICON="❌"
+    fi
+
+    MSG="📋 任务完成: ${TITLE}
+
+${STATUS_ICON} 状态: ${STATUS}
+⏰ 提出: ${STARTED_DISPLAY}
+⏰ 完成: ${SOLVED_TIME}
+
+📝 结果:
 ${KEY_LINES}"
 
-    # 后台发送，不阻塞 Hook
-    (
-        export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
-        if send_feishu "$FEISHU_TARGET" "$MSG"; then
-            echo "[$(date -Iseconds)] Background: Feishu sent" >> "$LOG"
-        else
-            echo "[$(date -Iseconds)] Background: Feishu failed" >> "$LOG"
-        fi
-    ) &
+    # 同步发送
+    export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
+    if send_feishu_text "$FEISHU_TARGET" "$MSG"; then
+        log "Feishu formatted message sent successfully"
+    else
+        log "Feishu message failed"
+    fi
 else
     log "Skipped sending - no output or no target"
 fi

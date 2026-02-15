@@ -384,6 +384,13 @@ tail -f ~/.openclaw/data/claude-code-results/hook.log
 
 ## 更新日志
 
+### 2026-02-15 (本次优化)
+- 飞书通知格式优化：添加卡片样式通知（send_feishu_card 函数）
+- 修复中文标题截断问题：使用 awk 按字符截断而非字节截断
+- 修复重复通知问题：关闭 SessionEnd Hook，只保留 Stop Hook
+- 修复输出捕获问题：添加 MANUAL_CALL 模式支持，从文件读取完整输出
+- 修复 Claude Code 登录问题：在 settings.json 配置 MiniMax env
+
 ### 2026-02-15
 - 添加 Agent Teams 子进程代理配置
 - 添加 git 全局代理自动配置
