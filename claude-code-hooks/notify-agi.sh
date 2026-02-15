@@ -95,23 +95,11 @@ filter_ansi() {
                     -e 's/\a//g'
 }
 
-# ---- 过滤 Claude Code 调试日志 ----
-# 只过滤明确的调试前缀，保留关键输出（如任务结果、commit信息等）
-filter_debug_logs() {
-    echo "$1" | sed -e '/^\[BashTool\] Pre-flight check/d' \
-                    -e '/^\[plugins\]:/d' \
-                    -e '/^\[info\]:/d' \
-                    -e '/ANTHROPIC_LOG/d' \
-                    -e '/^$/d' \
-                    -e '/^[[:space:]]*$/d' \
-        | awk '!seen[$0]++'  # 去除重复行（保留首次出现的行）
-}
-
-# ---- 检测任务状态（成功/失败）----
+# ---- 检测任务状态（成功/失败） ----
 detect_status() {
     local output="$1"
-    # 检测致命错误关键词（更精确）
-    if echo "$output" | grep -qiE '(fatal|crash|abort|cannot|unable to|denied|permission denied|command not found|not found|404|500|connection refused)'; then
+    # 检测错误关键词
+    if echo "$output" | grep -qiE '(error|failed|failure|exception|denied|timeout|中断|失败|错误|异常)'; then
         echo "failed"
     else
         echo "success"
@@ -243,7 +231,6 @@ send_feishu_text() {
 }
 
 OUTPUT=$(filter_ansi "$OUTPUT")
-OUTPUT=$(filter_debug_logs "$OUTPUT")
 
 # ---- 写入结果 JSON ----
 jq -n \
@@ -287,21 +274,12 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
     fi
     SOLVED_TIME=$(date "+%H:%M")
 
-    # 提取关键完成项：以 ✅、-、* 开头的行
-    # 如果没有，则提取最后几行的总结
-    KEY_LINES=$(echo "$OUTPUT" | grep -E '^[✅\-*]|^[[:space:]]*[-*]' | head -10 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g')
+    # 提取关键结果，每行一条Bullet，去除代码块符号
+    KEY_LINES=$(echo "$OUTPUT" | tail -20 | head -10 | grep -v '^$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g' | sed 's/^/- /')
 
-    # 如果没有找到以 -、* 开头的行，提取最后几行总结
-    if [ -z "$KEY_LINES" ]; then
-        KEY_LINES=$(echo "$OUTPUT" | tail -10 | grep -v '^[[:space:]]*$' | head -5 | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/```//g')
-    fi
-
-    # 限制每行长度，并添加 - 前缀格式化为列表
-    KEY_LINES=$(echo "$KEY_LINES" | sed 's/^[[:space:]]*//' | sed 's/^/✅ /' | head -5 | awk '!seen[$0]++')
-
-    # 如果 KEY_LINES 为空，用简单提示
-    if [ -z "$KEY_LINES" ]; then
-        KEY_LINES="✅ 任务已完成"
+    # 如果 KEY_LINES 为空，用 prompt 作为结果
+    if [ -z "$KEY_LINES" ] && [ -n "$TASK_PROMPT" ]; then
+        KEY_LINES="- 任务: $TASK_PROMPT"
     fi
 
     # 组装通知消息 - 使用优化的纯文本格式
@@ -311,8 +289,14 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
         STATUS_ICON="❌"
     fi
 
-    # 只显示完成项列表，不加任何标题
-    MSG="${KEY_LINES}"
+    MSG="📋 任务完成: ${TITLE}
+
+${STATUS_ICON} 状态: ${STATUS}
+⏰ 提出: ${STARTED_DISPLAY}
+⏰ 完成: ${SOLVED_TIME}
+
+📝 结果:
+${KEY_LINES}"
 
     # 同步发送
     export no_proxy="localhost,127.0.0.1,feishu.cn,open.feishu.cn"
