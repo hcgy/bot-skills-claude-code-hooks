@@ -311,13 +311,8 @@ KEY_RESULT=$(echo "$KEY_RESULT" | sed 's/"/-/g; s/\x1b\[[0-9;]*[a-zA-Z]//g; s/``
         STATUS_ICON="❌"
     fi
 
-    MSG="📋 任务完成: ${TITLE}
+    MSG="${STATUS_ICON} 任务完成
 
-${STATUS_ICON} 状态: ${STATUS}
-⏰ 提出: ${STARTED_DISPLAY}
-⏰ 完成: ${SOLVED_TIME}
-
-📝 结果:
 ${KEY_LINES}"
 
     # 同步发送
